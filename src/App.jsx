@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase/client'
 import Auth from './components/Auth'
 import ProjectsPage from './components/ProjectsPage'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import ProjectDetail from './components/ProjectDetail'
 import NewProject from './components/NewProject'
 import logo from './assets/Logo.PNG'
@@ -18,7 +18,7 @@ function Header({ user, onLogout }) {
         borderBottom: '3px solid #0055A4',
         marginBottom: '2rem',
         background: '#0055A4',
-        boxShadow: '0 4px 16px #EF413555',
+        // boxShadow eliminado para quitar el sombreado rojo
         position: 'relative',
         zIndex: 2,
         flexWrap: 'wrap',
@@ -45,7 +45,11 @@ function Header({ user, onLogout }) {
         }
       `}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <img src={logo} alt="Logo" style={{ height: 44, background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px #0055A422', padding: 4, maxWidth: 120 }} />
+        <Link to="/">
+          <button style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+            <img src={logo} alt="Logo" style={{ height: 44, background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px #0055A422', padding: 4, maxWidth: 120 }} />
+          </button>
+        </Link>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '1rem', color: '#fff', fontWeight: 600, textShadow: '0 1px 4px #0055A4', wordBreak: 'break-all' }}>{user?.email}</span>

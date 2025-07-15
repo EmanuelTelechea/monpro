@@ -22,19 +22,29 @@ const NewProject = ({ session }) => {
       style={{
         minHeight: 'calc(100vh - 80px)',
         width: '100vw',
-        maxWidth: '100vw',
         boxSizing: 'border-box',
         overflowX: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
         background: 'linear-gradient(90deg, #0055A4 0%, #fff 50%, #EF4135 100%)',
         padding: 0,
         margin: 0,
       }}
     >
+      <style>{`
+        body {
+          overflow-x: hidden !important;
+        }
+        @media (max-width: 900px) {
+          .new-container {
+            max-width: 100vw !important;
+            margin: 16px 0 !important;
+            padding: 1rem !important;
+          }
+        }
+      `}</style>
       <div
+        className="new-container"
         style={{
           maxWidth: 600,
           width: '100%',
@@ -42,7 +52,7 @@ const NewProject = ({ session }) => {
           borderRadius: 16,
           boxShadow: '0 2px 12px #0002',
           padding: '2rem',
-          margin: '32px 8px',
+          margin: '32px auto',
           boxSizing: 'border-box',
           display: 'flex',
           flexDirection: 'column',

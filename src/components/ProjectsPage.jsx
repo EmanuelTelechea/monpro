@@ -92,69 +92,115 @@ export default function ProjectsPage({ session }) {
   return (
     <div style={{
       display: 'flex',
+      flexWrap: 'wrap',
       minHeight: 'calc(100vh - 80px)',
       background: '#f5f7fa',
-      width: '100%',
+      width: '100vw',
       boxSizing: 'border-box',
+      overflowX: 'hidden',
+      margin: 0,
+      padding: 0,
     }}>
+      <style>{`
+        body {
+          overflow-x: hidden !important;
+        }
+        @media (max-width: 900px) {
+          aside {
+            width: 100vw !important;
+            min-width: 0 !important;
+            border-right: none !important;
+            border-top: 4px solid #EF4135 !important;
+            box-shadow: none !important;
+            padding: 24px 8px 8px 8px !important;
+          }
+          main {
+            padding: 24px 8px !important;
+          }
+        }
+      `}</style>
       {/* Sidebar */}
       <aside style={{
         width: 320,
         minWidth: 260,
-        background: '#fff',
+        background: 'linear-gradient(135deg, #f7fafd 0%, #e6f0fa 60%, #dbeafe 100%)',
+        backgroundClip: 'padding-box',
+        overflow: 'hidden',
         borderRight: '4px solid #0055A4',
-        borderTop: '4px solid #EF4135',
+        borderTop: '4px solid #0055A4',
         padding: '32px 16px 16px 16px',
         display: 'flex',
         flexDirection: 'column',
         gap: 24,
         boxShadow: '0 2px 12px #0055A422',
         position: 'relative',
+        flex: '1 1 320px',
+        maxWidth: '100vw',
+        borderTopRightRadius: 16,
+        borderBottomRightRadius: 16,
       }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 16, color: '#0055A4', letterSpacing: 0.5, position: 'relative', userSelect: 'none' }}>
-          Mis Proyectos
-          <span
-            style={{ float: 'right', color: '#EF4135', cursor: 'pointer', padding: '2px 8px', borderRadius: 6, background: dropdownOpen ? '#f5eaea' : 'transparent', transition: 'background 0.2s' }}
-            onClick={() => setDropdownOpen(v => !v)}
-            tabIndex={0}
-            onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
-          >
-            ⏷
-            {dropdownOpen && (
-              <div style={{
-                position: 'absolute',
-                right: 0,
-                top: 32,
-                background: '#fff',
-                border: '1.5px solid #0055A4',
-                borderRadius: 8,
-                boxShadow: '0 2px 8px #0055A422',
-                zIndex: 10,
-                minWidth: 140,
-                fontSize: 15,
-                fontWeight: 500,
-                color: '#0055A4',
-                padding: 0,
-              }}>
-                <div
-                  style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'todos' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
-                  onClick={() => { setFilter('todos'); setDropdownOpen(false); }}
-                >Todos</div>
-                <div
-                  style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'pendiente' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
-                  onClick={() => { setFilter('pendiente'); setDropdownOpen(false); }}
-                >Pendiente</div>
-                <div
-                  style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'activos' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
-                  onClick={() => { setFilter('activos'); setDropdownOpen(false); }}
-                >Activos</div>
-                <div
-                  style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'completados' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
-                  onClick={() => { setFilter('completados'); setDropdownOpen(false); }}
-                >Completados</div>
-              </div>
-            )}
-          </span>
+          <div style={{
+            background: 'linear-gradient(90deg, #0055A4 0%, #EF4135 100%)',
+            color: '#fff',
+            borderTopLeftRadius: 0,
+            borderBottomLeftRadius: 0,
+            borderTopRightRadius: 16,
+            borderBottomRightRadius: 16,
+            padding: '10px 18px',
+            marginBottom: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 1px 6px #0055A422',
+            width: '95%',
+            marginLeft: '-15px',
+            marginRight: 'auto',
+          }}>
+            <span style={{ fontWeight: 700, fontSize: 20, letterSpacing: 0.5 }}>Mis Proyectos</span>
+            <span
+              style={{ color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: 6, background: dropdownOpen ? '#EF4135' : 'rgba(255,255,255,0.12)', transition: 'background 0.2s' }}
+              onClick={() => setDropdownOpen(v => !v)}
+              tabIndex={0}
+              onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+            >
+              ⏷
+              {dropdownOpen && (
+                <div style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 40,
+                  background: '#fff',
+                  border: '1.5px solid #0055A4',
+                  borderRadius: 8,
+                  boxShadow: '0 2px 8px #0055A422',
+                  zIndex: 10,
+                  minWidth: 140,
+                  fontSize: 15,
+                  fontWeight: 500,
+                  color: '#0055A4',
+                  padding: 0,
+                }}>
+                  <div
+                    style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'todos' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
+                    onClick={() => { setFilter('todos'); setDropdownOpen(false); }}
+                  >Todos</div>
+                  <div
+                    style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'pendiente' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
+                    onClick={() => { setFilter('pendiente'); setDropdownOpen(false); }}
+                  >Pendiente</div>
+                  <div
+                    style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'activos' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
+                    onClick={() => { setFilter('activos'); setDropdownOpen(false); }}
+                  >Activos</div>
+                  <div
+                    style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'completados' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
+                    onClick={() => { setFilter('completados'); setDropdownOpen(false); }}
+                  >Completados</div>
+                </div>
+              )}
+            </span>
+          </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filteredProjects.map(project => {
@@ -242,13 +288,31 @@ export default function ProjectsPage({ session }) {
       </aside>
       {/* Main Content */}
       <main style={{
-        flex: 1,
+        flex: '2 1 600px',
         padding: '48px 32px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        background: 'rgba(255,255,255,0.85)'
+        background: 'rgba(255,255,255,0.85)',
+        minWidth: 0,
+        maxWidth: '100vw',
+        boxSizing: 'border-box',
       }}>
+        <style>{`
+          @media (max-width: 900px) {
+            aside {
+              width: 100vw !important;
+              min-width: 0 !important;
+              border-right: none !important;
+              border-top: 4px solid #EF4135 !important;
+              box-shadow: none !important;
+              padding: 24px 8px 8px 8px !important;
+            }
+            main {
+              padding: 24px 8px !important;
+            }
+          }
+        `}</style>
         <div style={{
           display: 'flex',
           flexDirection: 'column',
