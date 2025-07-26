@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import ProjectDetail from './components/ProjectDetail'
 import NewProject from './components/NewProject'
 import logo from './assets/Logo.PNG'
+import { sincronizarPendientes } from './services/projectService';
 
 function Header({ user, onLogout }) {
   return (
@@ -16,9 +17,7 @@ function Header({ user, onLogout }) {
         justifyContent: 'space-between',
         padding: '1rem 2rem',
         borderBottom: '3px solid #0055A4',
-        marginBottom: '2rem',
         background: '#0055A4',
-        // boxShadow eliminado para quitar el sombreado rojo
         position: 'relative',
         zIndex: 2,
         flexWrap: 'wrap',
@@ -89,19 +88,29 @@ function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Obtiene la sesión inicial correctamente (asíncrono)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setLoading(false)
-    })
+  // Obtener la sesión inicial
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    setSession(session);
+    setLoading(false);
+  });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setLoading(false)
-    })
+  // Escuchar cambios en la sesión
+  const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    setSession(session);
+    setLoading(false);
+  });
 
-    return () => listener.subscription.unsubscribe()
-  }, [])
+  // Sincronizar cuando esté online
+  sincronizarPendientes();
+  window.addEventListener('online', sincronizarPendientes);
+
+  // Cleanup: eliminar listeners
+  return () => {
+    listener.subscription.unsubscribe();
+    window.removeEventListener('online', sincronizarPendientes);
+  };
+}, []);
+
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

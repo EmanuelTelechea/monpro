@@ -14,6 +14,8 @@ export default function ProjectDetail() {
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
   const [tasks, setTasks] = useState([]);
+  const PROJECT_KEY = id ? `projectDetail_${id}` : null;
+  const TASKS_KEY = id ? `projectTasks_${id}` : null;
   let calendarDates = [];
 
   // Función para marcar los días con eventos
@@ -33,26 +35,49 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     const fetchProject = async () => {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) {
-        setError("Error al cargar el proyecto.");
-      } else {
-        setProject(data);
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', id)
+          .single();
+        if (error || !data) {
+          // Si hay error o no hay datos, intenta cargar de localStorage
+          const local = PROJECT_KEY && localStorage.getItem(PROJECT_KEY);
+          if (local) {
+            setProject(JSON.parse(local));
+          } else {
+            setError("Error al cargar el proyecto.");
+          }
+        } else {
+          setProject(data);
+          PROJECT_KEY && localStorage.setItem(PROJECT_KEY, JSON.stringify(data));
+        }
+      } catch {
+        const local = PROJECT_KEY && localStorage.getItem(PROJECT_KEY);
+        if (local) setProject(JSON.parse(local));
+        else setError("Error al cargar el proyecto.");
       }
     };
 
-    // Nueva función para traer tareas del proyecto
     const fetchTasks = async () => {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('id, estado')
-        .eq('project_id', id);
-      if (!error) setTasks(data);
+      try {
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('id, estado, fecha')
+          .eq('project_id', id);
+        if (error || !data) {
+          // Si hay error o no hay datos, intenta cargar de localStorage
+          const local = TASKS_KEY && localStorage.getItem(TASKS_KEY);
+          if (local) setTasks(JSON.parse(local));
+        } else {
+          setTasks(data);
+          TASKS_KEY && localStorage.setItem(TASKS_KEY, JSON.stringify(data));
+        }
+      } catch {
+        const local = TASKS_KEY && localStorage.getItem(TASKS_KEY);
+        if (local) setTasks(JSON.parse(local));
+      }
     };
 
     fetchProject();
@@ -60,8 +85,27 @@ export default function ProjectDetail() {
     // eslint-disable-next-line
   }, [id]);
 
-  // Cuando se actualiza una tarea, refresca la lista
+  // Cuando se actualiza una tarea, refresca la lista y localStorage
   const handleTaskUpdate = () => {
+    // fetchTasks está definido dentro de useEffect, así que lo repetimos aquí
+    const fetchTasks = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('id, estado, fecha')
+          .eq('project_id', id);
+        if (error || !data) {
+          const local = TASKS_KEY && localStorage.getItem(TASKS_KEY);
+          if (local) setTasks(JSON.parse(local));
+        } else {
+          setTasks(data);
+          TASKS_KEY && localStorage.setItem(TASKS_KEY, JSON.stringify(data));
+        }
+      } catch {
+        const local = TASKS_KEY && localStorage.getItem(TASKS_KEY);
+        if (local) setTasks(JSON.parse(local));
+      }
+    };
     fetchTasks();
   };
 
@@ -73,7 +117,27 @@ export default function ProjectDetail() {
       .select('*')
       .eq('id', id)
       .single()
-      .then(({ data }) => setProject(data));
+      .then(({ data }) => {
+        setProject(data);
+        PROJECT_KEY && localStorage.setItem(PROJECT_KEY, JSON.stringify(data));
+      });
+  };
+
+  // Eliminar proyecto
+  const handleDelete = async () => {
+    if (!window.confirm('¿Seguro que deseas eliminar este proyecto? Esta acción no se puede deshacer.')) return;
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id);
+    if (!error) {
+      // Limpia localStorage y navega fuera
+      PROJECT_KEY && localStorage.removeItem(PROJECT_KEY);
+      TASKS_KEY && localStorage.removeItem(TASKS_KEY);
+      navigate('/');
+    } else {
+      alert('Error al eliminar el proyecto');
+    }
   };
 
   if (error) return <p style={{ color: 'red', padding: 16 }}>{error}</p>;
@@ -226,7 +290,7 @@ export default function ProjectDetail() {
         <div style={{ display: 'flex', width: '100%', gap: 32 }}>
           {/* Detalles del proyecto (70%) */}
           <div style={{ flex: '0 1 70%', minWidth: 0 }}>
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', marginTop: 24, marginBottom: 8 }}>
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', marginTop: 24, marginBottom: 8, gap: 12 }}>
               <button
                 style={{
                   background: '#0055A4',
@@ -242,6 +306,23 @@ export default function ProjectDetail() {
                 onClick={() => setEditing(true)}
               >
                 Editar
+              </button>
+              <button
+                style={{
+                  background: '#EF4135',
+                  color: '#fff',
+                  border: '2px solid #EF4135',
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  fontSize: 15,
+                  padding: '8px 20px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px #EF413522'
+                }}
+                onClick={handleDelete}
+                title="Eliminar proyecto"
+              >
+                Eliminar
               </button>
             </div>
             <h1 style={{ fontSize: 32, marginBottom: 8, textAlign: 'center', color: '#0055A4', letterSpacing: 1 }}>{project.nombre}</h1>

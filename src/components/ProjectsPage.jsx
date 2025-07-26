@@ -8,39 +8,57 @@ export default function ProjectsPage({ session }) {
   const [projects, setProjects] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editProject, setEditProject] = useState(null)
-  const [tasksByProject, setTasksByProject] = useState({});
-  const [filter, setFilter] = useState('todos');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [tasksByProject, setTasksByProject] = useState({})
+  const [filter, setFilter] = useState('todos')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const navigate = useNavigate()
 
+  const LOCAL_STORAGE_KEY = `projects_${session.user.id}`
+
   const fetchProjects = async () => {
+    // Consulta Supabase
     const { data, error } = await supabase
       .from('projects')
       .select('*')
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: false })
 
-    if (!error) setProjects(data)
+    if (!error) {
+      setProjects(data)
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data)) // Guarda en localStorage
+    }
+  }
+
+  const loadProjectsFromLocalStorage = () => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY)
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        setProjects(parsed)
+      } catch (e) {
+        console.warn('No se pudieron cargar proyectos desde localStorage')
+      }
+    }
   }
 
   const fetchTasksByProject = async (projectIds) => {
-    if (!projectIds.length) return;
+    if (!projectIds.length) return
     const { data, error } = await supabase
       .from('tasks')
-      .select('id, project_id, estado');
+      .select('id, project_id, estado')
+
     if (!error) {
-      // Agrupa tareas por proyecto
-      const grouped = {};
-      projectIds.forEach(pid => grouped[pid] = []);
+      const grouped = {}
+      projectIds.forEach(pid => grouped[pid] = [])
       data.forEach(task => {
-        if (grouped[task.project_id]) grouped[task.project_id].push(task);
-      });
-      setTasksByProject(grouped);
+        if (grouped[task.project_id]) grouped[task.project_id].push(task)
+      })
+      setTasksByProject(grouped)
     }
-  };
+  }
 
   const handleCreate = () => {
-    navigate('/projects/new');
+    navigate('/projects/new')
   }
 
   const handleEdit = (project) => {
@@ -51,21 +69,39 @@ export default function ProjectsPage({ session }) {
   const handleSave = () => {
     setShowForm(false)
     setEditProject(null)
-    fetchProjects()
+    fetchProjects() // Refresca y actualiza localStorage
+  }
+
+  // Eliminar proyecto
+  const handleDelete = async (projectId) => {
+    if (!window.confirm('¿Seguro que deseas eliminar este proyecto? Esta acción no se puede deshacer.')) return;
+    // Elimina en Supabase
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', projectId)
+      .eq('user_id', session.user.id)
+    if (!error) {
+      // Actualiza estado y localStorage
+      const updated = projects.filter(p => p.id !== projectId)
+      setProjects(updated)
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated))
+    } else {
+      alert('Error al eliminar el proyecto')
+    }
   }
 
   useEffect(() => {
+    loadProjectsFromLocalStorage()
     fetchProjects()
-    // eslint-disable-next-line
   }, [])
 
   useEffect(() => {
     if (projects.length > 0) {
-      const ids = projects.map(p => p.id);
-      fetchTasksByProject(ids);
+      const ids = projects.map(p => p.id)
+      fetchTasksByProject(ids)
     }
-    // eslint-disable-next-line
-  }, [projects]);
+  }, [projects])
 
   // Estadísticas y lógica de estado por tareas
   const getProjectStatus = (project) => {
@@ -102,8 +138,11 @@ export default function ProjectsPage({ session }) {
       padding: 0,
     }}>
       <style>{`
-        body {
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
           overflow-x: hidden !important;
+          background: #f5f7fa !important;
         }
         @media (max-width: 900px) {
           aside {
@@ -127,7 +166,6 @@ export default function ProjectsPage({ session }) {
         backgroundClip: 'padding-box',
         overflow: 'hidden',
         borderRight: '4px solid #0055A4',
-        borderTop: '4px solid #0055A4',
         padding: '32px 16px 16px 16px',
         display: 'flex',
         flexDirection: 'column',
@@ -136,10 +174,8 @@ export default function ProjectsPage({ session }) {
         position: 'relative',
         flex: '1 1 320px',
         maxWidth: '100vw',
-        borderTopRightRadius: 16,
-        borderBottomRightRadius: 16,
       }}>
-        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 16, color: '#0055A4', letterSpacing: 0.5, position: 'relative', userSelect: 'none' }}>
+        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 0, color: '#0055A4', letterSpacing: 0.5, position: 'relative', userSelect: 'none' }}>
           <div style={{
             background: 'linear-gradient(90deg, #0055A4 0%, #EF4135 100%)',
             color: '#fff',
@@ -227,7 +263,8 @@ export default function ProjectsPage({ session }) {
                   marginBottom: 0,
                   boxShadow: '0 1px 2px #0001',
                   cursor: 'pointer',
-                  border: '1px solid #f0f0f0'
+                  border: '1px solid #f0f0f0',
+                  position: 'relative'
                 }}
                 onClick={() => navigate(`/project/${project.id}`)}
               >
@@ -275,6 +312,30 @@ export default function ProjectsPage({ session }) {
                     {project.progreso ? `${project.progreso}% completo` : ''}
                   </span>
                 </div>
+                {/* Botón eliminar */}
+                <button
+                  style={{
+                    position: 'absolute',
+                    top: 10,
+                    right: 10,
+                    background: '#EF4135',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    fontSize: 13,
+                    padding: '2px 10px',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 4px #EF413522',
+                  }}
+                  title="Eliminar proyecto"
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleDelete(project.id);
+                  }}
+                >
+                  Eliminar
+                </button>
               </div>
             );
           })}
@@ -383,31 +444,7 @@ export default function ProjectsPage({ session }) {
           marginBottom: 32
         }}>
           <div style={{
-            background: '#fff',
-            border: '2px solid #0055A4',
-            borderRadius: 12,
-            padding: 32,
-            minWidth: 260,
-            maxWidth: 320,
-            textAlign: 'center',
-            boxShadow: '0 1px 4px #0055A422',
           }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              background: '#0055A4',
-              margin: '0 auto 12px auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 18,
-              color: '#fff',
-              boxShadow: '0 1px 4px #0055A422',
-            }}>⏳</div>
-            <div style={{ fontWeight: 600, fontSize: 17, marginBottom: 4 }}>Usar Plantilla</div>
-            <div style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Acelera tu desarrollo con plantillas predefinidas</div>
-            <a href="#" style={{ color: '#222', fontWeight: 500, fontSize: 14, textDecoration: 'none' }}>Ver plantillas &rarr;</a>
           </div>
           <div style={{
             background: '#fff',

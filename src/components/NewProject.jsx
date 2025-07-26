@@ -1,12 +1,39 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ProjectForm from './ProjectForm';
+import { guardarProyectoOffline, sincronizarPendientes } from '../services/projectService';
 
 const NewProject = ({ session }) => {
   const navigate = useNavigate();
 
-  const handleSave = () => {
-    navigate('/');
+  useEffect(() => {
+    // Intenta sincronizar al volver a estar online
+    window.addEventListener('online', sincronizarPendientes);
+    return () => {
+      window.removeEventListener('online', sincronizarPendientes);
+    };
+  }, []);
+
+  const handleSave = async (data) => {
+    try {
+      if (navigator.onLine) {
+        // Si hay conexión, se guarda normalmente desde ProjectForm
+        // Ahora espera que ProjectForm llame a onSave con el proyecto creado (incluyendo id)
+        if (data && data.id) {
+          navigate(`/project/${data.id}`);
+        }
+        // Si no hay id, no navega (asegúrate de que ProjectForm lo envía)
+        return;
+      } else {
+        // Guardar offline
+        await guardarProyectoOffline(data);
+        alert('Proyecto guardado localmente. Se sincronizará cuando tengas conexión.');
+        navigate('/');
+      }
+    } catch (error) {
+      console.error('Error al guardar el proyecto offline:', error);
+      alert('Hubo un problema al guardar el proyecto.');
+    }
   };
 
   if (!session?.user?.id) {

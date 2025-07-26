@@ -52,9 +52,14 @@ export default function ProjectForm({ project, onSave, userId }) {
       else alert('Error al guardar');
     } else {
       // Crear
-      const { error } = await supabase.from('projects').insert([{ ...form, user_id: userId }]);
-      if (!error) onSave?.();
-      else alert('Error al crear');
+      const { data, error } = await supabase
+        .from('projects')
+        .insert([{ ...form, user_id: userId }])
+        .select()
+        .single();
+      if (!error && data) {
+        onSave && onSave(data); // Esto debe pasar el objeto con id
+      } else alert('Error al crear');
     }
   };
 
