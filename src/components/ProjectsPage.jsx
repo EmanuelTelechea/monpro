@@ -1,22 +1,32 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase/client'
-import ProjectCard from './ProjectCard'
-import ProjectForm from './ProjectForm'
 import { useNavigate } from 'react-router-dom'
+// Si no tienes lucide-react, puedes quitar los iconos o usar texto
+import { Plus, Trash2, ChevronDown, Folder, Layout, CheckCircle } from 'lucide-react'
 
 export default function ProjectsPage({ session }) {
   const [projects, setProjects] = useState([])
-  const [showForm, setShowForm] = useState(false)
-  const [editProject, setEditProject] = useState(null)
   const [tasksByProject, setTasksByProject] = useState({})
   const [filter, setFilter] = useState('todos')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const navigate = useNavigate()
 
   const LOCAL_STORAGE_KEY = `projects_${session.user.id}`
+  
+  // Colores "Esencia Francesa" (Modernos y mates)
+  const COLORS = {
+    primary: '#0F172A',     // Azul oscuro elegante (Slate 900)
+    accent: '#0055A4',      // Azul Francia
+    highlight: '#EF4135',   // Rojo Marianne
+    bg: '#F8FAFC',          // Fondo gris muy claro (Slate 50)
+    white: '#FFFFFF',
+    border: '#E2E8F0',      // Borde suave
+    textMain: '#334155',
+    textLight: '#64748B'
+  }
 
+  // --- LÓGICA (Igual que antes) ---
   const fetchProjects = async () => {
-    // Consulta Supabase
     const { data, error } = await supabase
       .from('projects')
       .select('*')
@@ -25,19 +35,14 @@ export default function ProjectsPage({ session }) {
 
     if (!error) {
       setProjects(data)
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data)) // Guarda en localStorage
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data))
     }
   }
 
   const loadProjectsFromLocalStorage = () => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY)
     if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        setProjects(parsed)
-      } catch (e) {
-        console.warn('No se pudieron cargar proyectos desde localStorage')
-      }
+      try { setProjects(JSON.parse(saved)) } catch (e) {}
     }
   }
 
@@ -57,422 +62,303 @@ export default function ProjectsPage({ session }) {
     }
   }
 
-  const handleCreate = () => {
-    navigate('/projects/new')
-  }
+  const handleCreate = () => navigate('/projects/new')
 
-  const handleEdit = (project) => {
-    setEditProject(project)
-    setShowForm(true)
-  }
-
-  const handleSave = () => {
-    setShowForm(false)
-    setEditProject(null)
-    fetchProjects() // Refresca y actualiza localStorage
-  }
-
-  // Eliminar proyecto
   const handleDelete = async (projectId) => {
-    if (!window.confirm('¿Seguro que deseas eliminar este proyecto? Esta acción no se puede deshacer.')) return;
-    // Elimina en Supabase
-    const { error } = await supabase
-      .from('projects')
-      .delete()
-      .eq('id', projectId)
-      .eq('user_id', session.user.id)
+    if (!window.confirm('¿Confirma eliminar este proyecto?')) return;
+    const { error } = await supabase.from('projects').delete().eq('id', projectId).eq('user_id', session.user.id)
     if (!error) {
-      // Actualiza estado y localStorage
       const updated = projects.filter(p => p.id !== projectId)
       setProjects(updated)
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated))
-    } else {
-      alert('Error al eliminar el proyecto')
     }
   }
 
-  useEffect(() => {
-    loadProjectsFromLocalStorage()
-    fetchProjects()
-  }, [])
+  useEffect(() => { loadProjectsFromLocalStorage(); fetchProjects() }, [])
+  useEffect(() => { if (projects.length > 0) fetchTasksByProject(projects.map(p => p.id)) }, [projects])
 
-  useEffect(() => {
-    if (projects.length > 0) {
-      const ids = projects.map(p => p.id)
-      fetchTasksByProject(ids)
-    }
-  }, [projects])
-
-  // Estadísticas y lógica de estado por tareas
   const getProjectStatus = (project) => {
     const tasks = tasksByProject[project.id] || [];
     if (tasks.length === 0) return 'pendiente';
     const completadas = tasks.filter(t => t.estado === 'completada').length;
-    if (completadas === 0) return 'pendiente';
     if (completadas === tasks.length) return 'completado';
     return 'activo';
   };
 
-  // Estadísticas simples
-  const total = projects.length;
-  const completados = projects.filter(p => getProjectStatus(p) === 'completado').length;
-  const activos = projects.filter(p => getProjectStatus(p) === 'activo').length;
-  const pendientes = projects.filter(p => getProjectStatus(p) === 'pendiente').length;
-
-  // Filtro de proyectos
+  // Filtros
   let filteredProjects = projects;
   if (filter === 'activos') filteredProjects = projects.filter(p => getProjectStatus(p) === 'activo');
   if (filter === 'completados') filteredProjects = projects.filter(p => getProjectStatus(p) === 'completado');
   if (filter === 'pendiente') filteredProjects = projects.filter(p => getProjectStatus(p) === 'pendiente');
 
+  // Estadísticas
+  const total = projects.length;
+  const completados = projects.filter(p => getProjectStatus(p) === 'completado').length;
+  const activos = projects.filter(p => getProjectStatus(p) === 'activo').length;
+
   return (
     <div style={{
       display: 'flex',
-      flexWrap: 'wrap',
-      minHeight: 'calc(100vh - 80px)',
-      background: '#f5f7fa',
       width: '100vw',
-      boxSizing: 'border-box',
-      overflowX: 'hidden',
-      margin: 0,
-      padding: 0,
+      height: '100vh',
+      background: COLORS.bg,
+      overflow: 'hidden',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+      color: COLORS.textMain
     }}>
+      {/* Reset Global para asegurar ancho completo */}
       <style>{`
-        html, body {
-          margin: 0 !important;
-          padding: 0 !important;
-          overflow-x: hidden !important;
-          background: #f5f7fa !important;
-        }
-        @media (max-width: 900px) {
-          aside {
-            width: 100vw !important;
-            min-width: 0 !important;
-            border-right: none !important;
-            border-top: 4px solid #EF4135 !important;
-            box-shadow: none !important;
-            padding: 24px 8px 8px 8px !important;
-          }
-          main {
-            padding: 24px 8px !important;
-          }
-        }
+        body, html, #root { margin: 0; padding: 0; width: 100%; height: 100%; }
+        * { box-sizing: border-box; }
+        .project-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-color: ${COLORS.accent}; }
+        .btn-create:hover { background-color: ${COLORS.accent} !important; transform: scale(1.05); }
       `}</style>
-      {/* Sidebar */}
+
+      {/* --- SIDEBAR --- */}
       <aside style={{
-        width: 320,
-        minWidth: 260,
-        background: 'linear-gradient(135deg, #f7fafd 0%, #e6f0fa 60%, #dbeafe 100%)',
-        backgroundClip: 'padding-box',
-        overflow: 'hidden',
-        borderRight: '4px solid #0055A4',
-        padding: '32px 16px 16px 16px',
+        width: '300px',
+        background: COLORS.white,
+        borderRight: `1px solid ${COLORS.border}`,
         display: 'flex',
         flexDirection: 'column',
-        gap: 24,
-        boxShadow: '0 2px 12px #0055A422',
-        position: 'relative',
-        flex: '1 1 320px',
-        maxWidth: '100vw',
+        height: '100%',
+        flexShrink: 0,
+        zIndex: 10
       }}>
-        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 0, color: '#0055A4', letterSpacing: 0.5, position: 'relative', userSelect: 'none' }}>
-          <div style={{
-            background: 'linear-gradient(90deg, #0055A4 0%, #EF4135 100%)',
-            color: '#fff',
-            borderTopLeftRadius: 0,
-            borderBottomLeftRadius: 0,
-            borderTopRightRadius: 16,
-            borderBottomRightRadius: 16,
-            padding: '10px 18px',
-            marginBottom: 8,
-            display: 'flex',
+        {/* Sidebar Header */}
+        <div style={{ padding: '24px 20px', borderBottom: `1px solid ${COLORS.border}` }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
             alignItems: 'center',
-            justifyContent: 'space-between',
-            boxShadow: '0 1px 6px #0055A422',
-            width: '95%',
-            marginLeft: '-15px',
-            marginRight: 'auto',
+            marginBottom: 20
           }}>
-            <span style={{ fontWeight: 700, fontSize: 20, letterSpacing: 0.5 }}>Mis Proyectos</span>
-            <span
-              style={{ color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: 6, background: dropdownOpen ? '#EF4135' : 'rgba(255,255,255,0.12)', transition: 'background 0.2s' }}
-              onClick={() => setDropdownOpen(v => !v)}
-              tabIndex={0}
-              onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Layout size={20} color={COLORS.accent}/> Mis Proyectos
+            </h2>
+          </div>
+
+          {/* Selector de Filtro Estilizado */}
+          <div style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: `1px solid ${COLORS.border}`,
+                background: COLORS.bg,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: COLORS.textMain
+              }}
             >
-              ⏷
-              {dropdownOpen && (
-                <div style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 40,
-                  background: '#fff',
-                  border: '1.5px solid #0055A4',
-                  borderRadius: 8,
-                  boxShadow: '0 2px 8px #0055A422',
-                  zIndex: 10,
-                  minWidth: 140,
-                  fontSize: 15,
-                  fontWeight: 500,
-                  color: '#0055A4',
-                  padding: 0,
-                }}>
-                  <div
-                    style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'todos' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
-                    onClick={() => { setFilter('todos'); setDropdownOpen(false); }}
-                  >Todos</div>
-                  <div
-                    style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'pendiente' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
-                    onClick={() => { setFilter('pendiente'); setDropdownOpen(false); }}
-                  >Pendiente</div>
-                  <div
-                    style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'activos' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
-                    onClick={() => { setFilter('activos'); setDropdownOpen(false); }}
-                  >Activos</div>
-                  <div
-                    style={{ padding: '10px 18px', cursor: 'pointer', background: filter === 'completados' ? '#e6f0fa' : 'transparent', borderRadius: 8 }}
-                    onClick={() => { setFilter('completados'); setDropdownOpen(false); }}
-                  >Completados</div>
-                </div>
-              )}
-            </span>
+              <span style={{ textTransform: 'capitalize' }}>{filter}</span>
+              <ChevronDown size={16} color={COLORS.textLight} />
+            </button>
+            
+            {dropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: '110%',
+                left: 0,
+                width: '100%',
+                background: COLORS.white,
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: '8px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                zIndex: 20,
+                overflow: 'hidden'
+              }}>
+                {['todos', 'pendiente', 'activos', 'completados'].map(opt => (
+                  <div 
+                    key={opt}
+                    onClick={() => { setFilter(opt); setDropdownOpen(false); }}
+                    style={{
+                      padding: '10px 14px',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      background: filter === opt ? '#F1F5F9' : 'transparent',
+                      color: filter === opt ? COLORS.accent : COLORS.textMain,
+                      textTransform: 'capitalize'
+                    }}
+                  >
+                    {opt}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+        {/* Lista de Proyectos (Scrollable) */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+          {filteredProjects.length === 0 && (
+            <p style={{ textAlign: 'center', color: COLORS.textLight, fontSize: '13px', marginTop: '20px' }}>No hay proyectos aquí.</p>
+          )}
+
           {filteredProjects.map(project => {
-            const tasks = tasksByProject[project.id] || [];
-            const totalT = tasks.length;
-            const completadas = tasks.filter(t => t.estado === 'completada').length;
-            const progreso = totalT > 0 ? Math.round((completadas / totalT) * 100) : 0;
             const status = getProjectStatus(project);
-            let statusColor = '#0055A4';
-            if (status === 'completado') statusColor = '#22c55e';
-            if (status === 'activo') statusColor = '#EF4135';
-            if (status === 'pendiente') statusColor = '#0055A4';
-            let statusText = '';
-            if (status === 'completado') statusText = 'Completado';
-            if (status === 'activo') statusText = 'Activo';
-            if (status === 'pendiente') statusText = 'Pendiente';
+            let badgeBg = '#F1F5F9';
+            let badgeColor = COLORS.textLight;
+            if (status === 'completado') { badgeBg = '#DCFCE7'; badgeColor = '#166534'; }
+            if (status === 'activo') { badgeBg = '#FEF3C7'; badgeColor = '#B45309'; }
+
             return (
-              <div
+              <div 
                 key={project.id}
+                className="project-card"
+                onClick={() => navigate(`/project/${project.id}`)}
                 style={{
-                  background: '#f7f8fa',
-                  borderRadius: 12,
-                  padding: '16px 14px',
-                  marginBottom: 0,
-                  boxShadow: '0 1px 2px #0001',
+                  background: COLORS.white,
+                  border: `1px solid ${COLORS.border}`,
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '12px',
                   cursor: 'pointer',
-                  border: '1px solid #f0f0f0',
+                  transition: 'all 0.2s ease',
                   position: 'relative'
                 }}
-                onClick={() => navigate(`/project/${project.id}`)}
               >
-                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8, color: '#0055A4' }}>
-                  {project.nombre}
-                  <span style={{
-                    fontSize: 12,
-                    background: statusColor,
-                    borderRadius: 8,
-                    padding: '2px 10px',
-                    marginLeft: 8,
-                    color: '#fff',
-                    fontWeight: 600
-                  }}>{statusText}</span>
-                </div>
-                <div style={{ color: '#888', fontSize: 14, marginBottom: 4 }}>{project.descripcion}</div>
-                {/* Barra de progreso de tareas */}
-                <div style={{ margin: '8px 0 4px 0' }}>
-                  <div style={{
-                    background: '#e5e7eb',
-                    borderRadius: 6,
-                    height: 8,
-                    width: '100%',
-                    overflow: 'hidden',
-                    border: '1.5px solid #0055A4',
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '15px', color: COLORS.primary }}>{project.nombre}</span>
+                  <span style={{ 
+                    fontSize: '10px', 
+                    fontWeight: 700, 
+                    padding: '2px 8px', 
+                    borderRadius: '20px', 
+                    background: badgeBg, 
+                    color: badgeColor,
+                    textTransform: 'uppercase'
                   }}>
-                    <div style={{
-                      width: `${progreso}%`,
-                      background: `linear-gradient(90deg, #0055A4 0%, #EF4135 100%)`,
-                      height: '100%',
-                      transition: 'width 0.3s',
-                    }} />
-                  </div>
-                  <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
-                    {totalT > 0
-                      ? `${completadas} de ${totalT} tareas completadas (${progreso}%)`
-                      : 'Sin tareas'}
-                  </div>
-                </div>
-                <div style={{ color: '#aaa', fontSize: 13 }}>
-                  {status === 'completado'
-                    ? `Completado el ${project.fecha_fin || '-'}`
-                    : `Actualizado hace 1 día`}
-                  <span style={{ float: 'right' }}>
-                    {project.progreso ? `${project.progreso}% completo` : ''}
+                    {status}
                   </span>
                 </div>
-                {/* Botón eliminar */}
+                <p style={{ fontSize: '13px', color: COLORS.textLight, margin: 0, marginBottom: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {project.descripcion || 'Sin descripción'}
+                </p>
+                
+                {/* Botón eliminar pequeño */}
                 <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(project.id); }}
                   style={{
-                    position: 'absolute',
-                    top: 10,
-                    right: 10,
-                    background: '#EF4135',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontWeight: 600,
-                    fontSize: 13,
-                    padding: '2px 10px',
-                    cursor: 'pointer',
-                    boxShadow: '0 1px 4px #EF413522',
+                    background: 'transparent', border: 'none', cursor: 'pointer', 
+                    position: 'absolute', bottom: '12px', right: '12px', padding: 4
                   }}
-                  title="Eliminar proyecto"
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleDelete(project.id);
-                  }}
+                  title="Eliminar"
                 >
-                  Eliminar
+                  <Trash2 size={14} color="#CBD5E1" onMouseOver={e => e.currentTarget.style.color = COLORS.highlight} onMouseOut={e => e.currentTarget.style.color = "#CBD5E1"}/>
                 </button>
               </div>
-            );
+            )
           })}
         </div>
-        <div style={{ marginTop: 32, fontSize: 15, color: '#888', borderTop: '2px solid #EF4135', paddingTop: 16 }}>
-          <div style={{ marginBottom: 4 }}>Total de proyectos <span style={{ float: 'right', color: '#222' }}>{total}</span></div>
-          <div style={{ marginBottom: 4 }}>Pendientes <span style={{ float: 'right', color: '#222' }}>{pendientes}</span></div>
-          <div style={{ marginBottom: 4 }}>Activos <span style={{ float: 'right', color: '#222' }}>{activos}</span></div>
-          <div>Completados <span style={{ float: 'right', color: '#222' }}>{completados}</span></div>
+
+        {/* Sidebar Footer */}
+        <div style={{ 
+          padding: '16px 20px', 
+          borderTop: `1px solid ${COLORS.border}`, 
+          fontSize: '12px', 
+          color: COLORS.textLight,
+          background: '#F8FAFC' 
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span>Total proyectos:</span> <strong>{total}</strong>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>Activos:</span> <strong style={{color: COLORS.accent}}>{activos}</strong>
+          </div>
         </div>
       </aside>
-      {/* Main Content */}
+
+      {/* --- MAIN CONTENT (Área Grande) --- */}
       <main style={{
-        flex: '2 1 600px',
-        padding: '48px 32px',
+        flex: 1,
+        background: `radial-gradient(circle at 10% 20%, #F1F5F9 0%, ${COLORS.white} 100%)`,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        background: 'rgba(255,255,255,0.85)',
-        minWidth: 0,
-        maxWidth: '100vw',
-        boxSizing: 'border-box',
+        justifyContent: 'center',
+        position: 'relative',
+        overflow: 'hidden'
       }}>
-        <style>{`
-          @media (max-width: 900px) {
-            aside {
-              width: 100vw !important;
-              min-width: 0 !important;
-              border-right: none !important;
-              border-top: 4px solid #EF4135 !important;
-              box-shadow: none !important;
-              padding: 24px 8px 8px 8px !important;
-            }
-            main {
-              padding: 24px 8px !important;
-            }
-          }
-        `}</style>
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          marginBottom: 32
-        }}>
-          <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-            <button
+        {/* Decoración de fondo sutil */}
+        <div style={{ position: 'absolute', top: -50, right: -50, width: 300, height: 300, background: 'rgba(0,85,164,0.03)', borderRadius: '50%' }}></div>
+        <div style={{ position: 'absolute', bottom: -50, left: -50, width: 400, height: 400, background: 'rgba(239,65,53,0.03)', borderRadius: '50%' }}></div>
+
+        <div style={{ textAlign: 'center', zIndex: 1, maxWidth: '500px', padding: '0 20px' }}>
+          
+          <div style={{ 
+            marginBottom: '32px', 
+            position: 'relative',
+            display: 'inline-block'
+          }}>
+             <button
               onClick={handleCreate}
+              className="btn-create"
               style={{
-                width: 80,
-                aspectRatio: '1 / 1',
+                width: '80px',
+                height: '80px',
                 borderRadius: '50%',
-                background: '#0055A4',
+                background: COLORS.highlight,
+                border: 'none',
+                color: 'white',
+                boxShadow: '0 10px 25px rgba(239, 65, 53, 0.4)',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 44,
-                color: '#fff',
-                boxShadow: '0 2px 8px #0055A422',
-                border: '4px solid #fff',
-                cursor: 'pointer',
-                transition: 'background 0.2s, border 0.2s',
-                outline: 'none',
-                padding: 0,
+                transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
               }}
-              title="Crear nuevo proyecto"
-              onMouseOver={e => { e.currentTarget.style.background = '#EF4135'; e.currentTarget.style.border = '4px solid #EF4135'; }}
-              onMouseOut={e => { e.currentTarget.style.background = '#0055A4'; e.currentTarget.style.border = '4px solid #fff'; }}
             >
-              <span style={{fontSize: 44, fontWeight: 700, lineHeight: 1, display: 'block', marginTop: 0}}>+</span>
+              <Plus size={40} />
             </button>
           </div>
-          <div style={{ fontWeight: 600, fontSize: 24, marginBottom: 8 }}>Crear Nuevo Proyecto</div>
-          <div style={{ color: '#888', fontSize: 16, marginBottom: 24, textAlign: 'center' }}>
-            Comienza un nuevo proyecto y organiza tu trabajo de manera eficiente
+
+          <h1 style={{ fontSize: '32px', fontWeight: 800, color: COLORS.primary, marginBottom: '12px', letterSpacing: '-0.5px' }}>
+            Nuevo Proyecto
+          </h1>
+          <p style={{ fontSize: '16px', color: COLORS.textLight, lineHeight: '1.6', marginBottom: '32px' }}>
+            Organiza tus tareas con eficiencia. La simplicidad es la clave de la productividad.
+          </p>
+
+          <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+            <button
+              onClick={handleCreate}
+              style={{
+                padding: '12px 32px',
+                background: COLORS.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '14px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)'
+              }}
+            >
+              Comenzar Ahora
+            </button>
+            <button
+              style={{
+                padding: '12px 32px',
+                background: COLORS.white,
+                color: COLORS.primary,
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '14px',
+                cursor: 'pointer'
+              }}
+            >
+              Importar
+            </button>
           </div>
-          <button
-            style={{
-              background: '#EF4135',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              fontWeight: 700,
-              fontSize: 16,
-              padding: '12px 32px',
-              marginBottom: 24,
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px #0055A422',
-              transition: 'background 0.2s',
-            }}
-            onMouseOver={e => {
-              e.currentTarget.style.background = '#0055A4';
-            }}
-            onMouseOut={e => {
-              e.currentTarget.style.background = '#EF4135';
-            }}
-            onClick={handleCreate}
-          >
-            + Crear Proyecto
-          </button>
-        </div>
-        <div style={{
-          display: 'flex',
-          gap: 32,
-          width: '100%',
-          justifyContent: 'center',
-          marginBottom: 32
-        }}>
-          <div style={{
-          }}>
-          </div>
-          <div style={{
-            background: '#fff',
-            border: '2px solid #EF4135',
-            borderRadius: 12,
-            padding: 32,
-            minWidth: 260,
-            maxWidth: 320,
-            textAlign: 'center',
-            boxShadow: '0 1px 4px #EF413522',
-          }}>
-            <div style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              background: '#EF4135',
-              margin: '0 auto 12px auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 18,
-              color: '#fff',
-              boxShadow: '0 1px 4px #EF413522',
-            }}>⭳</div>
-            <div style={{ fontWeight: 600, fontSize: 17, marginBottom: 4 }}>Importar Proyecto</div>
-            <div style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Importa un proyecto existente desde Git o archivo</div>
-            <a href="#" style={{ color: '#222', fontWeight: 500, fontSize: 14, textDecoration: 'none' }}>Importar &rarr;</a>
-          </div>
+
         </div>
       </main>
     </div>

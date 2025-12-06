@@ -1,15 +1,18 @@
 html, body {
-  width: 100vw;
-  max-width: 100vw;
+  margin: 0; 
+  padding: 0;
   overflow-x: hidden;
   box-sizing: border-box;
 }
 
+/* CORRECCIÓN 2: Ajustar el width y max-width de los contenedores de página */
 #root, #root > div, .main-container, .page-container, .project-card, .form-container, .auth-container {
-  width: 100%;
-  max-width: 100vw;
+  width: 100%; /* Usar 100% para ajustarse al padre */
+  /* max-width: 100vw; es redundante y puede causar problemas. */
+  max-width: 1200px; /* Usar el límite máximo para centrar el contenido */
   margin: 0 auto;
   box-sizing: border-box;
+  /* El padding se maneja mejor dentro de los contenedores si no quieres que el fondo ocupe todo el ancho */
   padding-left: 0;
   padding-right: 0;
 }
