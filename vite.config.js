@@ -35,5 +35,15 @@ export default defineConfig({
         ]
       }
     })
-  ]
+  ],
+  preview: {
+    // Permite que el servidor escuche en 0.0.0.0 (accesible por Render)
+    host: true, 
+    // Lista de hosts permitidos (incluye el dominio público de Render)
+    allowedHosts: [
+      'monpro.onrender.com'
+    ],
+    // Usamos el puerto por defecto de preview o el proporcionado por la variable de entorno
+    port: process.env.PORT || 4173, 
+  }
 })
