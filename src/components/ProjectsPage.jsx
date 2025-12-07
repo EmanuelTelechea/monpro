@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase/client'
 import { useNavigate } from 'react-router-dom'
-// Importamos Plus, Trash2, ChevronDown, Folder (Exportar), Layout, CheckCircle, Upload (Importar)
-import { Plus, Trash2, ChevronDown, Folder, Layout, CheckCircle, Upload } from 'lucide-react' 
+import { Plus, Trash2, ChevronDown, Folder, Layout, Upload } from 'lucide-react'
 
 export default function ProjectsPage({ session }) {
     const [projects, setProjects] = useState([])
@@ -11,16 +10,15 @@ export default function ProjectsPage({ session }) {
     const [dropdownOpen, setDropdownOpen] = useState(false)
     const navigate = useNavigate()
 
-    // REFERENCIA para el input de archivo (Importar)
     const fileInputRef = useRef(null) 
 
     const LOCAL_STORAGE_KEY = `projects_${session.user.id}`
     
     // Colores "Esencia Francesa"
     const COLORS = {
-        primary: '#0F172A',
-        accent: '#0055A4',
-        highlight: '#EF4135',
+        primary: '#001b5aff', 
+        accent: '#0055A4', 
+        highlight: '#EF4135', 
         bg: '#F8FAFC',
         white: '#FFFFFF',
         border: '#E2E8F0',
@@ -49,7 +47,6 @@ export default function ProjectsPage({ session }) {
         }
     }
 
-    // Esta función solo trae el estado para la visualización del listado
     const fetchTasksByProject = async (projectIds) => {
         if (!projectIds.length) return
         const { data, error } = await supabase
@@ -85,7 +82,7 @@ export default function ProjectsPage({ session }) {
         }
     }
 
-    // --- LÓGICA DE IMPORTACIÓN JSON ---
+    // --- LÓGICA DE IMPORTACIÓN GENÉRICA (JSON) ---
 
     const handleImportClick = () => {
         fileInputRef.current.click();
@@ -110,12 +107,16 @@ export default function ProjectsPage({ session }) {
     };
 
     const importProjects = async (projectsToImport) => {
-        if (!Array.isArray(projectsToImport) || projectsToImport.length === 0) {
-            return alert('El archivo JSON debe contener un array de proyectos con datos.');
+        // Asegura que pueda manejar un solo objeto o un array de objetos (aunque el JSON de exportación es un objeto con tareas)
+        const projectsArray = Array.isArray(projectsToImport) ? projectsToImport : [projectsToImport];
+        
+        if (projectsArray.length === 0) {
+            return alert('No se encontraron proyectos válidos para importar.');
         }
-
-        const projectsToInsert = projectsToImport.map(p => ({
-            nombre: p.nombre || 'Proyecto sin nombre',
+        
+        // La importación JSON solo importa los datos del proyecto, no las tareas anidadas
+        const projectsToInsert = projectsArray.map(p => ({
+            nombre: p.nombre || 'Proyecto importado sin nombre',
             descripcion: p.descripcion,
             user_id: session.user.id, 
             fecha_inicio: p.fecha_inicio || null,
@@ -129,15 +130,14 @@ export default function ProjectsPage({ session }) {
             alert('Error al importar proyectos: ' + error.message);
             console.error('Error de Supabase:', error);
         } else {
-            alert(`✅ Importación exitosa: Se agregaron ${projectsToInsert.length} proyectos.`);
+            alert(`✅ Importación exitosa: Se agregaron ${projectsToInsert.length} proyecto(s).`);
             fetchProjects(); 
         }
     };
     
-    // --- LÓGICA DE EXPORTACIÓN JSON POR PROYECTO (ACTUALIZADA) ---
-
+    // --- LÓGICA DE EXPORTACIÓN (sin cambios) ---
+    
     const fetchProjectDetailsAndExport = async (projectId, projectName) => {
-        // 1. Obtener detalles completos del proyecto
         const { data: projectData, error: projectError } = await supabase
             .from('projects')
             .select('*') 
@@ -150,7 +150,6 @@ export default function ProjectsPage({ session }) {
             return;
         }
 
-        // 2. Obtener TODAS las tareas asociadas y sus detalles
         const { data: tasksData, error: tasksError } = await supabase
             .from('tasks')
             .select('*') 
@@ -161,33 +160,27 @@ export default function ProjectsPage({ session }) {
             console.error("Error al obtener tareas asociadas:", tasksError);
         }
         
-        // 3. Crear el objeto de exportación
         const dataToExport = {
-            // Incluimos todos los campos relevantes del proyecto
             nombre: projectData.nombre,
             descripcion: projectData.descripcion,
             fecha_inicio: projectData.fecha_inicio,
             created_at: projectData.created_at, 
             
-            // Incluimos las tareas mapeando solo los campos importantes
             tareas: tasksData ? tasksData.map(task => ({
                 titulo: task.titulo,
                 descripcion: task.descripcion,
                 estado: task.estado,
                 fecha_vencimiento: task.fecha_vencimiento,
                 prioridad: task.prioridad,
-                // Puedes añadir cualquier otro campo de la tarea aquí
             })) : [],
         };
 
-        // 4. Generar y descargar el JSON
         const jsonString = JSON.stringify(dataToExport, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         
         const a = document.createElement('a');
         a.href = url;
-        // Nombre del archivo limpio: usa el nombre del proyecto y la fecha
         const safeName = projectName.replace(/[^a-zA-Z0-9]/g, '_');
         a.download = `proyecto_${safeName}_${new Date().toISOString().slice(0, 10)}.json`;
         
@@ -212,7 +205,6 @@ export default function ProjectsPage({ session }) {
         return 'activo';
     };
 
-    // Filtros y Estadísticas (sin cambios)
     let filteredProjects = projects;
     if (filter === 'activos') filteredProjects = projects.filter(p => getProjectStatus(p) === 'activo');
     if (filter === 'completados') filteredProjects = projects.filter(p => getProjectStatus(p) === 'completado');
@@ -220,6 +212,9 @@ export default function ProjectsPage({ session }) {
 
     const total = projects.length;
     const activos = projects.filter(p => getProjectStatus(p) === 'activo').length;
+    const completados = projects.filter(p => getProjectStatus(p) === 'completado').length;
+    const pendientes = projects.filter(p => getProjectStatus(p) === 'pendiente').length;
+
 
     return (
         <div style={{
@@ -235,11 +230,21 @@ export default function ProjectsPage({ session }) {
                 * { box-sizing: border-box; }
                 .project-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-color: ${COLORS.accent}; }
                 .btn-create:hover { background-color: ${COLORS.accent} !important; transform: scale(1.05); }
+                .action-btn {
+                    width: 28px; height: 28px; border-radius: 6px; 
+                    display: flex; align-items: center; justify-content: center;
+                    border: none; cursor: pointer; transition: all 0.2s;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                }
+                .action-btn:hover {
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                    transform: scale(1.08);
+                }
             `}</style>
 
             {/* --- SIDEBAR --- */}
             <aside style={{
-                width: '300px',
+                width: '350px', 
                 background: COLORS.white,
                 borderRight: `1px solid ${COLORS.border}`,
                 display: 'flex',
@@ -248,31 +253,53 @@ export default function ProjectsPage({ session }) {
                 flexShrink: 0,
                 zIndex: 10
             }}>
-                {/* Sidebar Header (Filtro) (sin cambios) */}
+                {/* Sidebar Header (Título, Contadores y Filtro) */}
                 <div style={{ padding: '24px 20px', borderBottom: `1px solid ${COLORS.border}` }}>
+                    
+                    {/* Título de Proyectos */}
                     <div style={{ 
                         display: 'flex', 
                         justifyContent: 'space-between', 
                         alignItems: 'center',
-                        marginBottom: 20
+                        marginBottom: 16
                     }}>
                         <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <Layout size={20} color={COLORS.accent}/> Mis Proyectos
                         </h2>
                     </div>
-                    {/* Selector de Filtro Estilizado (sin cambios) */}
+                    
+                    {/* Contadores de Proyectos (Total, Activos, Pendientes, Completados) */}
+                    <div style={{ 
+                        marginBottom: 20, 
+                        padding: '12px 16px', 
+                        background: COLORS.bg, 
+                        borderRadius: '8px',
+                        border: `1px solid ${COLORS.border}`
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: COLORS.textMain, marginBottom: 4 }}>
+                            <span>Total de Proyectos:</span> <strong style={{color: COLORS.primary}}>{total}</strong>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', textAlign: 'center' }}>
+                            <div style={{ padding: '4px 0', borderRadius: '4px', background: '#FEF3C7', color: '#B45309' }}>Activos: {activos}</div>
+                            <div style={{ padding: '4px 0', borderRadius: '4px', background: '#DCFCE7', color: '#166534' }}>Comp: {completados}</div>
+                            <div style={{ padding: '4px 0', borderRadius: '4px', background: '#F1F5F9', color: COLORS.textLight }}>Pend: {pendientes}</div>
+                        </div>
+                    </div>
+                    
+                    {/* Selector de Filtro Estilizado */}
                     <div style={{ position: 'relative' }}>
                         <button 
                             onClick={() => setDropdownOpen(!dropdownOpen)}
                             style={{
                                 width: '100%', padding: '10px 12px', borderRadius: '8px',
-                                border: `1px solid ${COLORS.border}`, background: COLORS.bg,
+                                border: `1px solid ${COLORS.border}`, background: COLORS.white,
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                cursor: 'pointer', fontSize: '14px', fontWeight: 500, color: COLORS.textMain
+                                cursor: 'pointer', fontSize: '14px', fontWeight: 500, color: COLORS.textMain,
+                                transition: 'all 0.2s', boxShadow: dropdownOpen ? `0 0 0 2px ${COLORS.accent}1A` : 'none'
                             }}
                         >
                             <span style={{ textTransform: 'capitalize' }}>{filter}</span>
-                            <ChevronDown size={16} color={COLORS.textLight} />
+                            <ChevronDown size={16} color={COLORS.textLight} style={{ transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
                         </button>
                         
                         {dropdownOpen && (
@@ -321,99 +348,109 @@ export default function ProjectsPage({ session }) {
                                 onClick={() => navigate(`/project/${project.id}`)}
                                 style={{
                                     background: COLORS.white, border: `1px solid ${COLORS.border}`,
-                                    borderRadius: '12px', padding: '16px', marginBottom: '12px',
-                                    cursor: 'pointer', transition: 'all 0.2s ease', position: 'relative'
+                                    borderRadius: '12px', padding: '16px 20px', marginBottom: '12px',
+                                    cursor: 'pointer', transition: 'all 0.2s ease', position: 'relative',
+                                    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
                                 }}
                             >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <span style={{ fontWeight: 600, fontSize: '15px', color: COLORS.primary }}>{project.nombre}</span>
+                                
+                                {/* Contenedor de Título y Estado */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    flexDirection: 'column',
+                                    flex: 1, 
+                                    paddingRight: '12px'
+                                }}>
+                                    {/* Nombre del proyecto (manejo de texto largo) */}
+                                    <span style={{ 
+                                        fontWeight: 600, fontSize: '15px', color: COLORS.primary,
+                                        minWidth: 0, 
+                                        whiteSpace: 'nowrap', 
+                                        overflow: 'hidden', 
+                                        textOverflow: 'ellipsis',
+                                        marginBottom: '6px'
+                                    }}>
+                                        {project.nombre}
+                                    </span>
+                                    
+                                    {/* Badge de Estado */}
                                     <span style={{ 
                                         fontSize: '10px', fontWeight: 700, padding: '2px 8px', 
                                         borderRadius: '20px', background: badgeBg, color: badgeColor,
-                                        textTransform: 'uppercase'
+                                        textTransform: 'uppercase', alignSelf: 'flex-start' 
                                     }}>
                                         {status}
                                     </span>
                                 </div>
-                                <p style={{ fontSize: '13px', color: COLORS.textLight, margin: 0, marginBottom: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {project.descripcion || 'Sin descripción'}
-                                </p>
                                 
-                                {/* CONTENEDOR DE ACCIONES (EXPORTAR y Eliminar) */}
-                                <div style={{ position: 'absolute', bottom: '10px', right: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                {/* CONTENEDOR DE ACCIONES (Vertical) */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    gap: '6px', 
+                                    flexShrink: 0 
+                                }}>
                                     
-                                    {/* Botón de Exportar (Específico del Proyecto) */}
+                                    {/* Botón de Exportar (Ícono con color COLORS.accent) */}
                                     <button
                                         onClick={(e) => { 
                                             e.stopPropagation(); 
                                             fetchProjectDetailsAndExport(project.id, project.nombre); 
                                         }}
-                                        style={{
-                                            background: 'transparent', border: 'none', cursor: 'pointer', padding: 4
-                                        }}
+                                        className="action-btn"
+                                        style={{ background: 'transparent' , border: 'none', cursor: 'pointer', padding: 4 }}
                                         title={`Exportar ${project.nombre} completo (JSON)`}
                                     >
-                                        <Folder 
-                                            size={14} 
-                                            color="#94A3B8" 
-                                            onMouseOver={e => e.currentTarget.style.color = COLORS.accent} 
-                                            onMouseOut={e => e.currentTarget.style.color = "#94A3B8"}
-                                        />
+                                        <Folder size={20} color={COLORS.accent} /> 
                                     </button>
                                     
-                                    {/* Botón eliminar pequeño */}
+                                    {/* Botón eliminar (Ícono con color COLORS.highlight) */}
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleDelete(project.id); }}
-                                        style={{
-                                            background: 'transparent', border: 'none', cursor: 'pointer', padding: 4
-                                        }}
+                                        className="action-btn"
+                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4}}
                                         title="Eliminar Proyecto"
                                     >
                                         <Trash2 
-                                            size={14} 
-                                            color="#CBD5E1" 
-                                            onMouseOver={e => e.currentTarget.style.color = COLORS.highlight} 
-                                            onMouseOut={e => e.currentTarget.style.color = "#CBD5E1"}
+                                            size={20} 
+                                            color={COLORS.highlight} 
                                         />
                                     </button>
                                 </div>
+                                
                             </div>
                         )
                     })}
                 </div>
 
-                {/* Sidebar Footer (sin cambios) */}
+                {/* Sidebar Footer */}
                 <div style={{ 
                     padding: '16px 20px', borderTop: `1px solid ${COLORS.border}`, 
-                    fontSize: '12px', color: COLORS.textLight, background: '#F8FAFC' 
+                    fontSize: '12px', color: COLORS.textLight, background: '#F8FAFC',
+                    textAlign: 'center'
                 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span>Total proyectos:</span> <strong>{total}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Activos:</span> <strong style={{color: COLORS.accent}}>{activos}</strong>
-                    </div>
+                    <p style={{ margin: 0 }}>Gestor de Proyectos v1.0</p>
                 </div>
             </aside>
 
 
-            {/* --- MAIN CONTENT (Área Grande) --- */}
+            {/* --- MAIN CONTENT --- */}
             <main style={{
                 flex: 1,
                 background: `radial-gradient(circle at 10% 20%, #F1F5F9 0%, ${COLORS.white} 100%)`,
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 justifyContent: 'center', position: 'relative', overflow: 'hidden'
             }}>
-                {/* Decoración de fondo sutil (sin cambios) */}
+                {/* Decoración de fondo sutil */}
                 <div style={{ position: 'absolute', top: -50, right: -50, width: 300, height: 300, background: 'rgba(0,85,164,0.03)', borderRadius: '50%' }}></div>
                 <div style={{ position: 'absolute', bottom: -50, left: -50, width: 400, height: 400, background: 'rgba(239,65,53,0.03)', borderRadius: '50%' }}></div>
 
-                <div style={{ textAlign: 'center', zIndex: 1, maxWidth: '500px', padding: '0 20px' }}>
+                <div style={{ textAlign: 'center', zIndex: 1, maxWidth: '600px', padding: '0 20px' }}>
                     
                     <div style={{ 
                         marginBottom: '32px', position: 'relative', display: 'inline-block'
                     }}>
-                           <button
+                            <button
                             onClick={handleCreate}
                             className="btn-create"
                             style={{
@@ -432,7 +469,7 @@ export default function ProjectsPage({ session }) {
                         ¡Comienza Ahora!
                     </h1>
                     <p style={{ fontSize: '16px', color: COLORS.textLight, lineHeight: '1.6', marginBottom: '32px' }}>
-                        Organiza tus tareas con eficiencia. La simplicidad es la clave de la productividad.
+                        Organiza tus tareas con eficiencia, o **importa proyectos** desde un archivo JSON para empezar rápidamente.
                     </p>
 
                     {/* Input de archivo oculto para la importación JSON */}
@@ -444,25 +481,26 @@ export default function ProjectsPage({ session }) {
                         style={{ display: 'none' }} 
                     />
 
-                    <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
                         
                         {/* BOTÓN 1: Crear Nuevo */}
                         <button
                             onClick={handleCreate}
                             style={{
-                                padding: '12px 32px', background: COLORS.primary, color: 'white',
+                                padding: '12px 20px', background: COLORS.primary, color: 'white',
                                 border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '14px',
-                                cursor: 'pointer', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)'
+                                cursor: 'pointer', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)',
+                                display: 'flex', alignItems: 'center', gap: 8,
                             }}
                         >
-                            Comenzar Ahora
+                            <Plus size={16} /> Crear Proyecto
                         </button>
                         
-                        {/* BOTÓN 2: Importar */}
+                        {/* BOTÓN 2: Importar desde JSON Local (ÚNICO BOTÓN DE IMPORTACIÓN) */}
                         <button
                             onClick={handleImportClick} 
                             style={{
-                                padding: '12px 32px', background: COLORS.white, color: COLORS.primary,
+                                padding: '12px 20px', background: COLORS.white, color: COLORS.primary,
                                 border: `1px solid ${COLORS.border}`, borderRadius: '8px', fontWeight: 600,
                                 fontSize: '14px', cursor: 'pointer', transition: 'background 0.2s, border-color 0.2s',
                                 display: 'flex', alignItems: 'center', gap: 8,
@@ -471,11 +509,9 @@ export default function ProjectsPage({ session }) {
                             onMouseOut={e => { e.currentTarget.style.borderColor = COLORS.border; e.currentTarget.style.background = COLORS.white; }}
                             title="Importar proyectos desde un archivo JSON local"
                         >
-                            <Upload size={16} /> Importar
+                            <Upload size={16} /> Importar JSON
                         </button>
                         
-                        {/* El botón de Exportar global ha sido ELIMINADO de aquí. */}
-
                     </div>
 
                 </div>
