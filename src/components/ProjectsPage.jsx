@@ -2,12 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase/client'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Trash2, ChevronDown, Folder, Layout, Upload } from 'lucide-react'
+import { format, isBefore, subMonths, parseISO } from 'date-fns'
+import { es } from 'date-fns/locale'
 
 export default function ProjectsPage({ session }) {
     const [projects, setProjects] = useState([])
     const [tasksByProject, setTasksByProject] = useState({})
     const [filter, setFilter] = useState('todos')
     const [dropdownOpen, setDropdownOpen] = useState(false)
+    const [allTasks, setAllTasks] = useState([]); // Nuevo estado para todas las tareas
     const navigate = useNavigate()
 
     const fileInputRef = useRef(null) 
@@ -28,9 +31,10 @@ export default function ProjectsPage({ session }) {
 
     // --- LÓGICA DE DATOS Y EFECTOS (fetch, load, delete) ---
     const fetchProjects = async () => {
+        // 💡 AGREGADO: fecha_fin
         const { data, error } = await supabase
             .from('projects')
-            .select('*')
+            .select('*, fecha_fin') 
             .eq('user_id', session.user.id)
             .order('created_at', { ascending: false })
 
@@ -48,21 +52,43 @@ export default function ProjectsPage({ session }) {
     }
 
     const fetchTasksByProject = async (projectIds) => {
-        if (!projectIds.length) return
+        if (!projectIds.length) {
+            setTasksByProject({});
+            setAllTasks([]);
+            return;
+        }
+        
+        console.log("DEBUG: Buscando tareas para proyectos:", projectIds);
+        
+        // 💡 AGREGADO: fecha_limite en la consulta
         const { data, error } = await supabase
             .from('tasks')
-            .select('id, project_id, estado')
-            .in('project_id', projectIds) 
+            .select('id, project_id, estado, titulo, fecha_limite') // <-- AÑADIR fecha_limite
+            .in('project_id', projectIds);
 
-        if (!error) {
-            const grouped = {}
-            projectIds.forEach(pid => grouped[pid] = [])
-            data.forEach(task => {
-                if (grouped[task.project_id]) grouped[task.project_id].push(task)
-            })
-            setTasksByProject(grouped)
+        if (error) {
+            console.error('Error fetching tasks:', error);
+            alert(`Error al cargar tareas: ${error.message}`);
+            return;
         }
-    }
+
+        console.log("DEBUG: Tareas encontradas:", data);
+
+        const grouped = {};
+        projectIds.forEach(pid => grouped[pid] = []);
+        
+        data.forEach(task => {
+            if (grouped[task.project_id]) {
+                grouped[task.project_id].push(task);
+            }
+        });
+        
+        console.log("DEBUG: Tareas agrupadas:", grouped);
+        setTasksByProject(grouped);
+        
+        // 💡 FILTRAR solo tareas no completadas con fecha_limite
+        setAllTasks(data.filter(t => t.estado !== 'completada' && t.fecha_limite));
+    };
 
     const handleCreate = () => navigate('/projects/new')
 
@@ -107,7 +133,6 @@ export default function ProjectsPage({ session }) {
     };
 
     const importProjects = async (projectsToImport) => {
-        // Asegura que pueda manejar un solo objeto o un array de objetos (aunque el JSON de exportación es un objeto con tareas)
         const projectsArray = Array.isArray(projectsToImport) ? projectsToImport : [projectsToImport];
         
         if (projectsArray.length === 0) {
@@ -120,6 +145,7 @@ export default function ProjectsPage({ session }) {
             descripcion: p.descripcion,
             user_id: session.user.id, 
             fecha_inicio: p.fecha_inicio || null,
+            fecha_fin: p.fecha_fin || null, // 💡 AGREGADO: fecha_fin en importación
         }));
 
         const { error } = await supabase
@@ -164,13 +190,14 @@ export default function ProjectsPage({ session }) {
             nombre: projectData.nombre,
             descripcion: projectData.descripcion,
             fecha_inicio: projectData.fecha_inicio,
+            fecha_fin: projectData.fecha_fin,
             created_at: projectData.created_at, 
             
             tareas: tasksData ? tasksData.map(task => ({
                 titulo: task.titulo,
                 descripcion: task.descripcion,
                 estado: task.estado,
-                fecha_vencimiento: task.fecha_vencimiento,
+                fecha_limite: task.fecha_limite, // <-- QUITAR espacio extra
                 prioridad: task.prioridad,
             })) : [],
         };
@@ -192,10 +219,19 @@ export default function ProjectsPage({ session }) {
         alert(`✅ Proyecto "${projectName}" exportado con éxito.`);
     };
     
-    // --- EFECTOS Y CÁLCULOS ---
+    // --- LÓGICA DE CÁLCULOS Y ESTADOS ---
 
-    useEffect(() => { loadProjectsFromLocalStorage(); fetchProjects() }, [])
-    useEffect(() => { if (projects.length > 0) fetchTasksByProject(projects.map(p => p.id)) }, [projects])
+    useEffect(() => { 
+        loadProjectsFromLocalStorage(); 
+        fetchProjects() 
+    }, []);
+
+    useEffect(() => { 
+        if (projects.length > 0) {
+            console.log("DEBUG: Proyectos cargados, buscando tareas...");
+            fetchTasksByProject(projects.map(p => p.id));
+        }
+    }, [projects]); 
 
     const getProjectStatus = (project) => {
         const tasks = tasksByProject[project.id] || [];
@@ -204,6 +240,67 @@ export default function ProjectsPage({ session }) {
         if (completadas === tasks.length) return 'completado';
         return 'activo';
     };
+    
+    const getProjectProgress = (project) => {
+        const tasks = tasksByProject[project.id] || [];
+        
+        // DEBUG TEMPORAL
+        console.log(`Proyecto ${project.id} - ${project.nombre}:`, {
+            tareas: tasks,
+            longitud: tasks.length,
+            completadas: tasks.filter(t => t.estado === 'completada').length
+        });
+        
+        if (tasks.length === 0) return 0;
+        
+        const completadas = tasks.filter(t => t.estado === 'completada').length;
+        return Math.round((completadas / tasks.length) * 100);
+    };
+
+    // 💡 NUEVA FUNCIÓN: Calcula y ordena las alertas de proximidad
+    const getProximityAlerts = () => {
+        const now = new Date();
+        const oneMonthFromNow = subMonths(now, -1); // Un mes en el futuro
+        const alerts = [];
+
+        // 1. Tareas con fecha de vencimiento próxima (menos de 1 mes)
+        for (const task of allTasks) {
+            if (task.fecha_limite) { // <-- QUITAR el espacio extra
+                const dueDate = parseISO(task.fecha_limite);
+                if (isBefore(dueDate, oneMonthFromNow) && isBefore(now, dueDate)) {
+                    const project = projects.find(p => p.id === task.project_id);
+                    alerts.push({
+                        type: 'tarea',
+                        date: dueDate,
+                        title: task.titulo,
+                        project: project ? project.nombre : 'Proyecto desconocido',
+                        dateString: format(dueDate, 'PP', { locale: es }),
+                    });
+                }
+            }
+        }
+
+        // 2. Proyectos con fecha de fin próxima (menos de 1 mes)
+        for (const project of projects) {
+            if (project.fecha_fin && getProjectStatus(project) !== 'completado') {
+                const endDate = parseISO(project.fecha_fin);
+                if (isBefore(endDate, oneMonthFromNow) && isBefore(now, endDate)) {
+                    alerts.push({
+                        type: 'proyecto',
+                        date: endDate,
+                        title: project.nombre,
+                        dateString: format(endDate, 'PP', { locale: es }),
+                    });
+                }
+            }
+        }
+
+        // 3. Ordenar por proximidad (fecha más cercana primero)
+        alerts.sort((a, b) => a.date - b.date);
+
+        return alerts;
+    };
+
 
     let filteredProjects = projects;
     if (filter === 'activos') filteredProjects = projects.filter(p => getProjectStatus(p) === 'activo');
@@ -215,6 +312,7 @@ export default function ProjectsPage({ session }) {
     const completados = projects.filter(p => getProjectStatus(p) === 'completado').length;
     const pendientes = projects.filter(p => getProjectStatus(p) === 'pendiente').length;
 
+    const proximityAlerts = getProximityAlerts(); // 💡 CALCULAR ALERTAS
 
     return (
         <div style={{
@@ -242,7 +340,7 @@ export default function ProjectsPage({ session }) {
                 }
             `}</style>
 
-            {/* --- SIDEBAR --- */}
+            {/* --- SIDEBAR --- (Sin cambios relevantes en estructura) */}
             <aside style={{
                 width: '350px', 
                 background: COLORS.white,
@@ -336,6 +434,8 @@ export default function ProjectsPage({ session }) {
 
                     {filteredProjects.map(project => {
                         const status = getProjectStatus(project);
+                        const progress = getProjectProgress(project); 
+
                         let badgeBg = '#F1F5F9';
                         let badgeColor = COLORS.textLight;
                         if (status === 'completado') { badgeBg = '#DCFCE7'; badgeColor = '#166534'; }
@@ -354,7 +454,7 @@ export default function ProjectsPage({ session }) {
                                 }}
                             >
                                 
-                                {/* Contenedor de Título y Estado */}
+                                {/* Contenedor de Título, Progreso y Estado */}
                                 <div style={{ 
                                     display: 'flex', 
                                     flexDirection: 'column',
@@ -373,6 +473,27 @@ export default function ProjectsPage({ session }) {
                                         {project.nombre}
                                     </span>
                                     
+                                    {/* BARRA DE PROGRESO */}
+                                    <div style={{ marginTop: '8px', width: '100%', marginBottom: '8px' }}>
+                                        {/* Barra de Progreso */}
+                                        <div style={{ 
+                                            height: '6px', borderRadius: '3px', background: COLORS.bg, 
+                                            border: `1px solid ${COLORS.border}`, marginBottom: '4px' 
+                                        }}>
+                                            <div style={{
+                                                height: '100%', width: `${progress}%`, 
+                                                background: progress === 100 ? '#16A34A' : COLORS.accent, 
+                                                borderRadius: 'inherit', transition: 'width 0.5s ease-out'
+                                            }}></div>
+                                        </div>
+                                        {/* Porcentaje */}
+                                        <span style={{ fontSize: '12px', fontWeight: 600, color: COLORS.textLight }}>
+                                            Progreso: <strong style={{color: COLORS.primary}}>{progress}%</strong>
+                                        </span>
+                                    </div>
+                                    {/* FIN BARRA DE PROGRESO */}
+
+
                                     {/* Badge de Estado */}
                                     <span style={{ 
                                         fontSize: '10px', fontWeight: 700, padding: '2px 8px', 
@@ -391,7 +512,7 @@ export default function ProjectsPage({ session }) {
                                     flexShrink: 0 
                                 }}>
                                     
-                                    {/* Botón de Exportar (Ícono con color COLORS.accent) */}
+                                    {/* Botón de Exportar */}
                                     <button
                                         onClick={(e) => { 
                                             e.stopPropagation(); 
@@ -404,7 +525,7 @@ export default function ProjectsPage({ session }) {
                                         <Folder size={20} color={COLORS.accent} /> 
                                     </button>
                                     
-                                    {/* Botón eliminar (Ícono con color COLORS.highlight) */}
+                                    {/* Botón eliminar */}
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleDelete(project.id); }}
                                         className="action-btn"
@@ -434,86 +555,250 @@ export default function ProjectsPage({ session }) {
             </aside>
 
 
-            {/* --- MAIN CONTENT --- */}
+            {/* --- MAIN CONTENT (MODIFICADO para mostrar alertas) --- */}
             <main style={{
                 flex: 1,
-                background: `radial-gradient(circle at 10% 20%, #F1F5F9 0%, ${COLORS.white} 100%)`,
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', position: 'relative', overflow: 'hidden'
+                padding: '40px',
+                overflowY: 'auto',
+                background: COLORS.bg,
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%'
             }}>
-                {/* Decoración de fondo sutil */}
-                <div style={{ position: 'absolute', top: -50, right: -50, width: 300, height: 300, background: 'rgba(0,85,164,0.03)', borderRadius: '50%' }}></div>
-                <div style={{ position: 'absolute', bottom: -50, left: -50, width: 400, height: 400, background: 'rgba(239,65,53,0.03)', borderRadius: '50%' }}></div>
-
-                <div style={{ textAlign: 'center', zIndex: 1, maxWidth: '600px', padding: '0 20px' }}>
-                    
-                    <div style={{ 
-                        marginBottom: '32px', position: 'relative', display: 'inline-block'
+                
+                {/* 💡 SECCIÓN DE ALERTAS DE PROXIMIDAD - CON SCROLL PROPIO */}
+                <section style={{
+                    flex: '0 0 auto',
+                    marginBottom: '40px'
+                }}>
+                    <h2 style={{ 
+                        fontSize: '24px', 
+                        fontWeight: 700, 
+                        color: COLORS.highlight, 
+                        marginBottom: '20px', 
+                        borderBottom: `2px solid ${COLORS.highlight}`, 
+                        paddingBottom: '8px' 
                     }}>
+                        🔔 Alertas de Proximidad ({proximityAlerts.length})
+                    </h2>
+                    
+                    {proximityAlerts.length === 0 ? (
+                        <div style={{ 
+                            padding: '30px', 
+                            background: COLORS.white, 
+                            borderRadius: '12px', 
+                            textAlign: 'center', 
+                            border: `1px solid ${COLORS.border}` 
+                        }}>
+                            <p style={{ margin: 0, color: COLORS.textLight }}>
+                                No hay tareas ni proyectos con fechas de vencimiento en el próximo mes.
+                            </p>
+                        </div>
+                    ) : (
+                        <div style={{ 
+                            maxHeight: '300px', // Altura máxima para las alertas
+                            overflowY: 'auto',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px',
+                            paddingRight: '8px' // Espacio para el scrollbar
+                        }}>
+                            {proximityAlerts.map((alert, index) => (
+                                <div 
+                                    key={index}
+                                    style={{
+                                        padding: '16px 20px', 
+                                        background: alert.type === 'tarea' ? '#FFFBEB' : '#F0F9FF',
+                                        border: `1px solid ${alert.type === 'tarea' ? '#FBBF24' : '#3B82F6'}`,
+                                        borderRadius: '8px', 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        flexShrink: 0 // Para que no se compriman
+                                    }}
+                                >
+                                    <div style={{ flex: 1 }}>
+                                        <p style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: COLORS.primary }}>
+                                            {alert.type === 'tarea' ? `Tarea: ${alert.title}` : `Proyecto: ${alert.title}`}
+                                        </p>
+                                        <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: COLORS.textLight }}>
+                                            {alert.type === 'tarea' ? 
+                                                `Proyecto asociado: ${alert.project}` : 
+                                                <strong style={{color: COLORS.accent}}>¡Fecha de fin de proyecto!</strong>
+                                            }
+                                        </p>
+                                    </div>
+                                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '16px' }}>
+                                        <span style={{ 
+                                            fontSize: '12px', 
+                                            fontWeight: 700, 
+                                            padding: '4px 8px', 
+                                            borderRadius: '4px',
+                                            background: COLORS.highlight, 
+                                            color: COLORS.white 
+                                        }}>
+                                            {alert.dateString}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                {/* SECCIÓN DE CREAR E IMPORTAR - VISIBLE SIEMPRE */}
+                <div style={{ 
+                    borderTop: `1px dashed ${COLORS.border}`, 
+                    paddingTop: '40px',
+                    flex: '0 0 auto', // No crece, tamaño fijo
+                    marginTop: 'auto', // Empuja hacia abajo si hay espacio
+                    marginBottom: '100px'
+                }}>
+                    <h2 style={{ 
+                        fontSize: '24px', 
+                        fontWeight: 700, 
+                        color: COLORS.primary, 
+                        marginBottom: '20px', 
+                        textAlign: 'center' 
+                    }}>
+                        Crear e Importar
+                    </h2>
+                    <div style={{ 
+                        textAlign: 'center', 
+                        zIndex: 1, 
+                        maxWidth: '600px', 
+                        padding: '0 20px', 
+                        margin: '0 auto' 
+                    }}>
+                        
+                        {/* BOTÓN CIRCULAR CENTRAL */}
+                        <div style={{ 
+                            marginBottom: '32px', 
+                            position: 'relative', 
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center'
+                        }}>
                             <button
-                            onClick={handleCreate}
-                            className="btn-create"
-                            style={{
-                                width: '80px', height: '80px', borderRadius: '50%',
-                                background: COLORS.highlight, border: 'none', color: 'white',
-                                boxShadow: '0 10px 25px rgba(239, 65, 53, 0.4)', cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
-                            }}
-                        >
-                            <Plus size={40} />
-                        </button>
+                                onClick={handleCreate}
+                                className="btn-create"
+                                style={{
+                                    width: '80px', 
+                                    height: '80px', 
+                                    borderRadius: '50%',
+                                    background: COLORS.highlight, 
+                                    border: 'none', 
+                                    color: 'white',
+                                    boxShadow: '0 10px 25px rgba(239, 65, 53, 0.4)', 
+                                    cursor: 'pointer',
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center',
+                                    transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                                }}
+                            >
+                                <Plus size={40} />
+                            </button>
+                        </div>
+
+                        <p style={{ 
+                            fontSize: '16px', 
+                            color: COLORS.textLight, 
+                            lineHeight: '1.6', 
+                            marginBottom: '32px',
+                            textAlign: 'center'
+                        }}>
+                            Organiza tus tareas con eficiencia, o <strong>importa proyectos</strong> desde un archivo JSON para empezar rápidamente.
+                        </p>
+
+                        {/* Input de archivo oculto para la importación JSON */}
+                        <input
+                            type="file"
+                            ref={fileInputRef} 
+                            onChange={handleFileChange}
+                            accept=".json" 
+                            style={{ display: 'none' }} 
+                        />
+
+                        {/* CONTENEDOR DE BOTONES */}
+                        <div style={{ 
+                            display: 'flex', 
+                            gap: '16px', 
+                            justifyContent: 'center', 
+                            flexWrap: 'wrap',
+                            width: '1   00%'
+                            
+                        }}>
+                            
+                            {/* BOTÓN 1: Crear Nuevo */}
+                            <button
+                                onClick={handleCreate}
+                                style={{
+                                    padding: '12px 24px', // Aumentado el padding
+                                    background: COLORS.primary, 
+                                    color: 'white',
+                                    border: 'none', 
+                                    borderRadius: '8px', 
+                                    fontWeight: 600, 
+                                    fontSize: '14px',
+                                    cursor: 'pointer', 
+                                    boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)',
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: 8,
+                                    minWidth: '160px', // Ancho mínimo
+                                    justifyContent: 'center',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                onMouseOver={e => {
+                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                    e.currentTarget.style.boxShadow = '0 6px 15px rgba(15, 23, 42, 0.3)';
+                                }}
+                                onMouseOut={e => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(15, 23, 42, 0.2)';
+                                }}
+                            >
+                                <Plus size={16} /> Crear Proyecto
+                            </button>
+                            
+                            {/* BOTÓN 2: Importar desde JSON */}
+                            <button
+                                onClick={handleImportClick} 
+                                style={{
+                                    padding: '12px 24px', // Aumentado el padding
+                                    background: COLORS.white, 
+                                    color: COLORS.primary,
+                                    border: `2px solid ${COLORS.border}`, // Borde más grueso
+                                    borderRadius: '8px', 
+                                    fontWeight: 600,
+                                    fontSize: '14px', 
+                                    cursor: 'pointer', 
+                                    transition: 'all 0.2s ease',
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: 8,
+                                    minWidth: '160px', // Ancho mínimo
+                                    justifyContent: 'center'
+                                }}
+                                onMouseOver={e => { 
+                                    e.currentTarget.style.borderColor = COLORS.accent; 
+                                    e.currentTarget.style.background = COLORS.bg; 
+                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                    e.currentTarget.style.boxShadow = '0 6px 15px rgba(0, 85, 164, 0.15)';
+                                }}
+                                onMouseOut={e => { 
+                                    e.currentTarget.style.borderColor = COLORS.border; 
+                                    e.currentTarget.style.background = COLORS.white; 
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = 'none';
+                                }}
+                                title="Importar proyectos desde un archivo JSON local"
+                            >
+                                <Upload size={16} /> Importar JSON
+                            </button>
+                        </div>
                     </div>
-
-                    <h1 style={{ fontSize: '32px', fontWeight: 800, color: COLORS.primary, marginBottom: '12px', letterSpacing: '-0.5px' }}>
-                        ¡Comienza Ahora!
-                    </h1>
-                    <p style={{ fontSize: '16px', color: COLORS.textLight, lineHeight: '1.6', marginBottom: '32px' }}>
-                        Organiza tus tareas con eficiencia, o **importa proyectos** desde un archivo JSON para empezar rápidamente.
-                    </p>
-
-                    {/* Input de archivo oculto para la importación JSON */}
-                    <input
-                        type="file"
-                        ref={fileInputRef} 
-                        onChange={handleFileChange}
-                        accept=".json" 
-                        style={{ display: 'none' }} 
-                    />
-
-                    <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                        
-                        {/* BOTÓN 1: Crear Nuevo */}
-                        <button
-                            onClick={handleCreate}
-                            style={{
-                                padding: '12px 20px', background: COLORS.primary, color: 'white',
-                                border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '14px',
-                                cursor: 'pointer', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)',
-                                display: 'flex', alignItems: 'center', gap: 8,
-                            }}
-                        >
-                            <Plus size={16} /> Crear Proyecto
-                        </button>
-                        
-                        {/* BOTÓN 2: Importar desde JSON Local (ÚNICO BOTÓN DE IMPORTACIÓN) */}
-                        <button
-                            onClick={handleImportClick} 
-                            style={{
-                                padding: '12px 20px', background: COLORS.white, color: COLORS.primary,
-                                border: `1px solid ${COLORS.border}`, borderRadius: '8px', fontWeight: 600,
-                                fontSize: '14px', cursor: 'pointer', transition: 'background 0.2s, border-color 0.2s',
-                                display: 'flex', alignItems: 'center', gap: 8,
-                            }}
-                            onMouseOver={e => { e.currentTarget.style.borderColor = COLORS.accent; e.currentTarget.style.background = COLORS.bg; }}
-                            onMouseOut={e => { e.currentTarget.style.borderColor = COLORS.border; e.currentTarget.style.background = COLORS.white; }}
-                            title="Importar proyectos desde un archivo JSON local"
-                        >
-                            <Upload size={16} /> Importar JSON
-                        </button>
-                        
-                    </div>
-
                 </div>
             </main>
         </div>
